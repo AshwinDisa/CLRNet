@@ -23,3 +23,5 @@ tmp.*
 *.so
 build
 *.jpg
+*.png
+extras/test_images/
