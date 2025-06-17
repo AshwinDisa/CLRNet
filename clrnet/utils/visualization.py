@@ -37,7 +37,7 @@ COLORS = [
 ]
 
 
-def imshow_lanes(img, lanes, show=False, out_file=None, width=4):
+def imshow_lanes(img, lanes, show=False, out_file=None, width=4, video=False, fps=None):
     lanes_xys = []
     for _, lane in enumerate(lanes):
         xys = []
@@ -46,17 +46,27 @@ def imshow_lanes(img, lanes, show=False, out_file=None, width=4):
                 continue
             x, y = int(x), int(y)
             xys.append((x, y))
+            # print(f'({x}, {y})')
         lanes_xys.append(xys)
     lanes_xys.sort(key=lambda xys : xys[0][0])
 
     for idx, xys in enumerate(lanes_xys):
         for i in range(1, len(xys)):
             cv2.line(img, xys[i - 1], xys[i], COLORS[idx], thickness=width)
+            # print(f'Drawing lane {idx} from {xys[i - 1]} to {xys[i]}')
 
-
-    if show:
+    if show and not video:
         cv2.imshow('view', img)
-        cv2.waitKey(0)
+        cv2.waitKey()
+
+    if show and video:
+        if fps is not None:
+            cv2.putText(img, f"FPS: {fps}", (20, 40), cv2.FONT_HERSHEY_SIMPLEX,
+                    1.2, (0, 0, 255), 3, cv2.LINE_AA)
+
+
+        cv2.imshow('view', img)
+        cv2.waitKey(1)
 
     if out_file:
         if not osp.exists(osp.dirname(out_file)):
