@@ -10,6 +10,8 @@ from clrnet.utils.config import Config
 from clrnet.engine.runner import Runner
 from clrnet.datasets import build_dataloader
 
+from extras.convert_to_onnx import convert_to_onnx
+
 
 def main():
     args = parse_args()
@@ -31,13 +33,20 @@ def main():
 
     runner = Runner(cfg)
 
+    if args.convert_to_onnx:
+        convert_to_onnx(cfg)
+        return
+    
+    if args.infer is not None:
+        runner.infer(args.infer, args.model, args.image_dir)
+        return 
+
     if args.validate:
         runner.validate()
     elif args.test:
         runner.test()
     else:
         runner.train()
-
 
 def parse_args():
     parser = argparse.ArgumentParser(description='Train a detector')
@@ -66,6 +75,29 @@ def parse_args():
         help='whether to test the checkpoint on testing set')
     parser.add_argument('--gpus', nargs='+', type=int, default='0')
     parser.add_argument('--seed', type=int, default=0, help='random seed')
+    parser.add_argument(
+        '--convert_to_onnx',
+        action='store_true',
+        help='whether to convert the model to ONNX format')
+    
+    parser.add_argument(
+        '--infer',
+        type=str,
+        default=None,
+        help='type of inference')
+
+    parser.add_argument(
+        '--model',
+        type=str,
+        default=None,
+        help='path to pytorch/onnx model')
+    
+    parser.add_argument(
+        '--image_dir',
+        type=str,
+        default=None,
+        help='path to image directory for inference')
+    
     args = parser.parse_args()
 
     return args

@@ -152,79 +152,6 @@ class Runner(object):
                                                   self.cfg.work_dir)
         self.recorder.logger.info('metric: ' + str(metric))
 
-    def infer(self, mode, model_path, image_dir=None):
-
-        img_path = sorted(glob.glob(f"{image_dir}*.jpg"))
-        cut_height = 270
-
-        for img in img_path:
-            og_image = cv2.imread(img)
-
-            # trained on these params
-            image = cv2.resize(og_image, (1640, 590))
-            cut_image = image[cut_height:, :, :]
-            test_image = cv2.resize(cut_image, (800, 320))
-            
-            # float32 and normalize
-            img = test_image.astype(np.float32) / 255.0
-            img = np.transpose(img, (2, 0, 1))
-            img = np.expand_dims(img, axis=0).astype(np.float32)
-
-            if mode == 'pytorch':
-                img = torch.from_numpy(img).cuda()
-                self.infer_pytorch(img, model_path)
-                
-            elif mode == 'onnx_python_cpu':
-                self.infer_onnx_python_cpu(model_path)
-            elif mode == 'onnx_python_gpu':
-                self.infer_onnx_python_gpu(model_path)
-            else:
-                raise ValueError("Mode must be 'pytorch', 'onnx_python_cpu', or 'onnx_python_gpu'.")
-
-
-
-
-    def infer_pytorch(self, model_path):
-
-        img_paths = sorted(glob.glob("extras/test_images/P3scene1/*.jpg"))
-        cut_height = 0
-
-        checkpoint = torch.load(model_path, map_location='cuda:0' if torch.cuda.is_available() else 'cpu')
-        self.net.load_state_dict(checkpoint['net'], strict=False)
-        self.net.eval()
-        self.net.cuda()
-
-        for img_path in img_paths:
-            image = cv2.imread(img_path)
-            image = image[cut_height:, :, :]
-            img_resize = cv2.resize(image, (800, 320))
-            img = img_resize.astype(np.float32) / 255.0
-            img = np.transpose(img, (2, 0, 1))
-            img = np.expand_dims(img, axis=0).astype(np.float32)
-            img = torch.from_numpy(img).cuda()
-
-            # Start timing this frame
-            t0 = time.time()
-
-            # Run PyTorch inference
-            self.net.eval()
-            with torch.no_grad():
-                output = self.net(img)
-                output = self.net.module.heads.get_lanes(output)
-
-            # End timing this frame
-            t1 = time.time()
-            fps = int(1 / (t1 - t0 + 1e-8))  # avoid division by 0
-
-            lanes = []
-            for lane in output[0]:
-                coords = lane.to_array(self.cfg)
-                coords[:, 1] -= cut_height
-                lanes.append(coords)
-
-            # Show frame with FPS
-            imshow_lanes(img_resize, lanes, show=True, video=True, fps=fps)
-
     def test_image_onnx(self, onnx_path):
 
         # img_path = '/home/ashd/projects/CLRNet/data/driver_100_30frame/05250358_0283.MP4/00000.jpg'
@@ -280,77 +207,106 @@ class Runner(object):
         # Optional: resize back image for visualization
         imshow_lanes(og_image, lanes, show=True)
 
-    def infer_onnx_python_cpu(self, onnx_path):
+    def infer(self, mode, model_path, image_dir=None):
 
-        img_paths = sorted(glob.glob("extras/test_images/scene2/*.jpg"))
+        img_path = sorted(glob.glob(f"{image_dir}*.jpg"))
         cut_height = 270
-        session = ort.InferenceSession(onnx_path, providers=['CPUExecutionProvider'])
-        input_name = session.get_inputs()[0].name
 
-        for img_path in img_paths:
-            image = cv2.imread(img_path)
-            image = image[cut_height:, :, :]
-            img_resize = cv2.resize(image, (800, 320))
-            img = img_resize.astype(np.float32) / 255.0
-            img = np.transpose(img, (2, 0, 1))
-            img = np.expand_dims(img, axis=0).astype(np.float32)
+        if mode == 'pytorch':
+            # Pytorch
+            checkpoint = torch.load(model_path, map_location='cuda:0' if torch.cuda.is_available() else 'cpu')
+            self.net.load_state_dict(checkpoint['net'], strict=False)
+            self.net.eval()
+            self.net.cuda()
 
-            # Start timing this frame
-            t0 = time.time()
+        elif mode == 'onnx_python_cpu':
+            session = ort.InferenceSession(model_path, providers=['CPUExecutionProvider'])
+            input_name = session.get_inputs()[0].name
 
-            # Run ONNX inference
-            output = session.run(None, {input_name: img})
-            output_tensor = torch.from_numpy(output[0]).cuda()
-            output = self.net.module.heads.get_lanes(output_tensor)
+        elif mode == 'onnx_python_gpu':
+            session = ort.InferenceSession(model_path, providers=['CUDAExecutionProvider'])
+            input_name = session.get_inputs()[0].name
 
-            # End timing this frame
-            t1 = time.time()
-            fps = int(1 / (t1 - t0 + 1e-8))  # avoid division by 0
+        for img in img_path:
+            og_image = cv2.imread(img)
 
-            lanes = []
-            for lane in output[0]:
-                coords = lane.to_array(self.cfg)
-                coords[:, 1] -= cut_height
-                lanes.append(coords)
-
-            # Show frame with FPS
-            imshow_lanes(image, lanes, show=True, video=True, fps=fps)
-
-    def infer_onnx_python_gpu(self, onnx_path):
-
-        img_paths = sorted(glob.glob("extras/test_images/P3scene1/*.jpg"))
-        cut_height = 270
-        session = ort.InferenceSession(onnx_path, providers=['CUDAExecutionProvider'])
-        input_name = session.get_inputs()[0].name
-
-        for img_path in img_paths:
-            image = cv2.imread(img_path)
-            image = image[cut_height:, :, :]
-            img_resize = cv2.resize(image, (800, 320))
-            img = img_resize.astype(np.float32) / 255.0
-            img = np.transpose(img, (2, 0, 1))
-            img = np.expand_dims(img, axis=0).astype(np.float32)
+            # trained on these params
+            image = cv2.resize(og_image, (1640, 590))
+            cut_image = image[cut_height:, :, :]
+            test_image = cv2.resize(cut_image, (800, 320))
             
-            # Start timing this frame
-            t0 = time.time()
+            # float32 and normalize
+            img = test_image.astype(np.float32) / 255.0
+            img = np.transpose(img, (2, 0, 1))
+            img = np.expand_dims(img, axis=0).astype(np.float32)
 
-            # Run ONNX inference
-            output = session.run(None, {input_name: img})
-            output_tensor = torch.from_numpy(output[0]).cuda()
-            output = self.net.module.heads.get_lanes(output_tensor)
-
-            # End timing this frame
-            t1 = time.time()
-            fps = int(1 / (t1 - t0 + 1e-8))  # avoid division by 0
+            if mode == 'pytorch':
+                output, fps = self.infer_pytorch(img)
+                
+            elif mode == 'onnx_python_cpu':
+                output, fps = self.infer_onnx_python_cpu(img, session, input_name)
+                
+            elif mode == 'onnx_python_gpu':
+                output, fps = self.infer_onnx_python_gpu(img, session, input_name)
+            
+            else:
+                raise ValueError("Mode must be 'pytorch', 'onnx_python_cpu', or 'onnx_python_gpu'.")
 
             lanes = []
             for lane in output[0]:
-                coords = lane.to_array(self.cfg)
-                coords[:, 1] -= cut_height
-                lanes.append(coords)
+                lane_new = lane.to_array(self.cfg)
+                # scale for custom images
+                coords_new = lane.scale_lane_points(copy.deepcopy(lane_new), from_size=(1640, 590), to_size=og_image.shape[:2][::-1])
+                lanes.append(coords_new)
 
             # Show frame with FPS
-            imshow_lanes(image, lanes, show=True, video=True, fps=fps)
+            imshow_lanes(og_image, lanes, show=True, video=True, fps=fps)
+
+    def infer_pytorch(self, img):
+
+        img = torch.from_numpy(img).cuda()
+
+        t0 = time.time()
+
+        # Run PyTorch inference
+        with torch.no_grad():
+            output = self.net(img)
+            output = self.net.module.heads.get_lanes(output)
+
+        # End timing this frame
+        t1 = time.time()
+        fps = int(1 / (t1 - t0 + 1e-8))
+
+        return output, fps
+
+    def infer_onnx_python_cpu(self, img, session, input_name):
+
+        t0 = time.time()
+
+        # Run ONNX inference
+        output = session.run(None, {input_name: img})
+        output_tensor = torch.from_numpy(output[0]).cuda()
+        output = self.net.module.heads.get_lanes(output_tensor)
+
+        t1 = time.time()
+        fps = int(1 / (t1 - t0 + 1e-8))
+
+        return output, fps
+
+    def infer_onnx_python_gpu(self, img, session, input_name):
+            
+        t0 = time.time()
+
+        # Run ONNX inference
+        output = session.run(None, {input_name: img})
+        output_tensor = torch.from_numpy(output[0]).cuda()
+        output = self.net.module.heads.get_lanes(output_tensor)
+
+        # End timing this frame
+        t1 = time.time()
+        fps = int(1 / (t1 - t0 + 1e-8))  # avoid division by 0
+
+        return output, fps
 
     def save_ckpt(self, is_best=False):
         save_model(self.net, self.optimizer, self.scheduler, self.recorder,
