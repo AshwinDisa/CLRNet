@@ -48,7 +48,7 @@ class Recorder(object):
         self.logger.info('Config: \n' + cfg.text)
 
         self.save_cfg(cfg)
-        self.cp_projects(self.work_dir)
+        # self.cp_projects(self.work_dir)
 
         # scalars
         self.epoch = 0
