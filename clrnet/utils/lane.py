@@ -39,13 +39,6 @@ class Lane:
                               axis=1)
         return lane
 
-    def scale_lane_points(self, coords_in, from_size, to_size):
-        scale_x = to_size[0] / from_size[0]
-        scale_y = to_size[1] / from_size[1]
-        coords_in[:, 0] *= scale_x  # x
-        coords_in[:, 1] *= scale_y  # y
-        return coords_in
-
     def __iter__(self):
         return self
 
