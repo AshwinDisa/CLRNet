@@ -20,7 +20,8 @@ from mmcv.parallel import MMDataParallel
 
 import pdb
 import onnxruntime as ort
-from clrnet.utils.visualization import imshow_lanes   
+from clrnet.utils.visualization import imshow_lanes 
+from clrnet.engine.tensorRT import TRTInference  
 
 class Runner(object):
     def __init__(self, cfg):
@@ -152,6 +153,11 @@ class Runner(object):
                                                   self.cfg.work_dir)
         self.recorder.logger.info('metric: ' + str(metric))
 
+    def scale_lane_points(self, coords_in, scale_x, scale_y):
+        coords_in[:, 0] *= scale_x  # x
+        coords_in[:, 1] *= scale_y  # y
+        return coords_in
+
     def test_image_onnx(self, onnx_path):
 
         # img_path = '/home/ashd/projects/CLRNet/data/driver_100_30frame/05250358_0283.MP4/00000.jpg'
@@ -227,27 +233,48 @@ class Runner(object):
             session = ort.InferenceSession(model_path, providers=['CUDAExecutionProvider'])
             input_name = session.get_inputs()[0].name
 
+        elif mode == 'tensorrt':
+            trt_infer = TRTInference(model_path, self.net.module.heads.get_lanes)
+
+        init_time = time.time()
+        frames = 0 
+
+        # set scale
+        img = cv2.imread(img_path[0])
+        scale_x = img.shape[1] / 1640
+        scale_y = img.shape[0] / 590
+
         for img in img_path:
+
+            init_time_per_frame = time.time()
+
             og_image = cv2.imread(img)
 
             # trained on these params
-            image = cv2.resize(og_image, (1640, 590))
-            cut_image = image[cut_height:, :, :]
-            test_image = cv2.resize(cut_image, (800, 320))
+            # image = cv2.resize(og_image, (1640, 590))
+            # cut_image = image[cut_height:, :, :]
+            # test_image = cv2.resize(cut_image, (800, 320))
+                # target_height = 590 - cut_height
+            test_image = cv2.resize(og_image[int(cut_height * og_image.shape[0] / 590):], (800, 320))
             
             # float32 and normalize
             img = test_image.astype(np.float32) / 255.0
-            img = np.transpose(img, (2, 0, 1))
-            img = np.expand_dims(img, axis=0).astype(np.float32)
+            # img = np.transpose(img, (2, 0, 1))
+            # img = np.expand_dims(img, axis=0).astype(np.float32)
+
+            img = np.transpose(img, (2, 0, 1))[np.newaxis, ...]
 
             if mode == 'pytorch':
-                output, fps = self.infer_pytorch(img)
+                output, infer_time = self.infer_pytorch(img)
                 
             elif mode == 'onnx_python_cpu':
-                output, fps = self.infer_onnx_python_cpu(img, session, input_name)
+                output, infer_time = self.infer_onnx_python_cpu(img, session, input_name)
                 
             elif mode == 'onnx_python_gpu':
-                output, fps = self.infer_onnx_python_gpu(img, session, input_name)
+                output, infer_time = self.infer_onnx_python_gpu(img, session, input_name)
+            
+            elif mode == 'tensorrt':
+                output, infer_time = self.infer_tensorrt(img, trt_infer)
             
             else:
                 raise ValueError("Mode must be 'pytorch', 'onnx_python_cpu', or 'onnx_python_gpu'.")
@@ -256,11 +283,18 @@ class Runner(object):
             for lane in output[0]:
                 lane_new = lane.to_array(self.cfg)
                 # scale for custom images
-                coords_new = lane.scale_lane_points(copy.deepcopy(lane_new), from_size=(1640, 590), to_size=og_image.shape[:2][::-1])
-                lanes.append(coords_new)
+                # coords_new = lane.scale_lane_points(copy.deepcopy(lane_new), from_size=(1640, 590), to_size=og_image.shape[:2][::-1])
+                coords_new = self.scale_lane_points(lane_new, scale_x, scale_y)
+                lanes.append(coords_new)    
 
-            # Show frame with FPS
-            imshow_lanes(og_image, lanes, show=True, video=True, fps=fps)
+            final_time_per_frame = time.time()
+            fps = int(1 / (final_time_per_frame - init_time_per_frame + 1e-8))
+            
+            # Show frame with FPS and time to infer
+            imshow_lanes(og_image, lanes, show=True, video=True, fps=fps, infer_time=infer_time)
+            frames += 1
+
+        print(f"Mean FPS with {mode}: ", 1/(time.time() - init_time + 1e-8) * frames)
 
     def infer_pytorch(self, img):
 
@@ -273,11 +307,10 @@ class Runner(object):
             output = self.net(img)
             output = self.net.module.heads.get_lanes(output)
 
-        # End timing this frame
         t1 = time.time()
-        fps = int(1 / (t1 - t0 + 1e-8))
+        infer_time = t1 - t0
 
-        return output, fps
+        return output, infer_time
 
     def infer_onnx_python_cpu(self, img, session, input_name):
 
@@ -289,9 +322,9 @@ class Runner(object):
         output = self.net.module.heads.get_lanes(output_tensor)
 
         t1 = time.time()
-        fps = int(1 / (t1 - t0 + 1e-8))
+        infer_time = t1 - t0
 
-        return output, fps
+        return output, infer_time
 
     def infer_onnx_python_gpu(self, img, session, input_name):
             
@@ -302,11 +335,20 @@ class Runner(object):
         output_tensor = torch.from_numpy(output[0]).cuda()
         output = self.net.module.heads.get_lanes(output_tensor)
 
-        # End timing this frame
         t1 = time.time()
-        fps = int(1 / (t1 - t0 + 1e-8))  # avoid division by 0
+        infer_time = t1 - t0 
 
-        return output, fps
+        return output, infer_time
+    
+    def infer_tensorrt(self, img, trt_infer):
+
+        t0 = time.time()
+        output = trt_infer.infer(img)
+        output = self.net.module.heads.get_lanes(output)
+        t1 = time.time()
+        infer_time = t1 - t0
+
+        return output, infer_time
 
     def save_ckpt(self, is_best=False):
         save_model(self.net, self.optimizer, self.scheduler, self.recorder,
