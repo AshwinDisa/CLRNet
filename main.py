@@ -12,7 +12,6 @@ from clrnet.datasets import build_dataloader
 
 from extras.convert_to_onnx import convert_to_onnx
 
-
 def main():
     args = parse_args()
     os.environ["CUDA_VISIBLE_DEVICES"] = ','.join(
@@ -36,7 +35,7 @@ def main():
     if args.convert_to_onnx:
         convert_to_onnx(cfg)
         return
-    
+
     if args.infer is not None:
         runner.infer(args.infer, args.model, args.image_dir)
         return 
@@ -75,10 +74,18 @@ def parse_args():
         help='whether to test the checkpoint on testing set')
     parser.add_argument('--gpus', nargs='+', type=int, default='0')
     parser.add_argument('--seed', type=int, default=0, help='random seed')
+    
+    # new arg params
     parser.add_argument(
         '--convert_to_onnx',
         action='store_true',
         help='whether to convert the model to ONNX format')
+    
+    parser.add_argument(
+        '--convert_to_trt',
+        type=str,
+        default=None,
+        help='ONNX model path')
     
     parser.add_argument(
         '--infer',
@@ -90,7 +97,7 @@ def parse_args():
         '--model',
         type=str,
         default=None,
-        help='path to pytorch/onnx model')
+        help='path to pytorch/onnx/tensorRT model')
     
     parser.add_argument(
         '--image_dir',
