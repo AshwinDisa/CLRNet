@@ -37,7 +37,7 @@ COLORS = [
 ]
 
 
-def imshow_lanes(img, lanes, show=False, out_file=None, width=4, video=False, fps=None):
+def imshow_lanes(img, lanes, show=False, out_file=None, width=4, video=False, fps=None, infer_time=None):
     lanes_xys = []
     for _, lane in enumerate(lanes):
         xys = []
@@ -62,6 +62,9 @@ def imshow_lanes(img, lanes, show=False, out_file=None, width=4, video=False, fp
     if show and video:
         if fps is not None:
             cv2.putText(img, f"FPS: {fps}", (20, 40), cv2.FONT_HERSHEY_SIMPLEX,
+                    1.2, (0, 0, 255), 3, cv2.LINE_AA)
+        if infer_time is not None:
+            cv2.putText(img, f"Infer Time: {(infer_time * 1000):.2f} ms", (20, 80), cv2.FONT_HERSHEY_SIMPLEX,
                     1.2, (0, 0, 255), 3, cv2.LINE_AA)
 
 
