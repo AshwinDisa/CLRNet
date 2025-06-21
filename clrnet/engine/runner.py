@@ -22,6 +22,7 @@ import pdb
 import onnxruntime as ort
 from clrnet.utils.visualization import imshow_lanes 
 from clrnet.engine.tensorRT import TRTInference  
+from clrnet.engine.ONNXRuntime import ONNXInference 
 
 class Runner(object):
     def __init__(self, cfg):
@@ -230,8 +231,7 @@ class Runner(object):
             input_name = session.get_inputs()[0].name
 
         elif mode == 'onnx_python_gpu':
-            session = ort.InferenceSession(model_path, providers=['CUDAExecutionProvider'])
-            input_name = session.get_inputs()[0].name
+            inference_engine = ONNXInference(model_path)
 
         elif mode == 'tensorrt':
             trt_infer = TRTInference(model_path, self.net.module.heads.get_lanes)
@@ -244,6 +244,9 @@ class Runner(object):
         scale_x = img.shape[1] / 1640
         scale_y = img.shape[0] / 590
 
+        image_folder = image_dir.split('/')[-2]
+        out_path = f'extras/test_images/infer_results/{image_folder}'
+
         for img in img_path:
 
             init_time_per_frame = time.time()
@@ -251,17 +254,17 @@ class Runner(object):
             og_image = cv2.imread(img)
 
             # trained on these params
+            
             # image = cv2.resize(og_image, (1640, 590))
             # cut_image = image[cut_height:, :, :]
             # test_image = cv2.resize(cut_image, (800, 320))
-                # target_height = 590 - cut_height
             test_image = cv2.resize(og_image[int(cut_height * og_image.shape[0] / 590):], (800, 320))
             
             # float32 and normalize
             img = test_image.astype(np.float32) / 255.0
+            
             # img = np.transpose(img, (2, 0, 1))
             # img = np.expand_dims(img, axis=0).astype(np.float32)
-
             img = np.transpose(img, (2, 0, 1))[np.newaxis, ...]
 
             if mode == 'pytorch':
@@ -271,7 +274,7 @@ class Runner(object):
                 output, infer_time = self.infer_onnx_python_cpu(img, session, input_name)
                 
             elif mode == 'onnx_python_gpu':
-                output, infer_time = self.infer_onnx_python_gpu(img, session, input_name)
+                output, infer_time = self.infer_onnx_python_gpu(img, inference_engine)
             
             elif mode == 'tensorrt':
                 output, infer_time = self.infer_tensorrt(img, trt_infer)
@@ -291,7 +294,11 @@ class Runner(object):
             fps = int(1 / (final_time_per_frame - init_time_per_frame + 1e-8))
             
             # Show frame with FPS and time to infer
-            imshow_lanes(og_image, lanes, show=True, video=True, fps=fps, infer_time=infer_time)
+            imshow_lanes(og_image, lanes, show=True, video=True, fps=fps, infer_time=infer_time, mode=mode)
+            
+            # to save the image
+            # imshow_lanes(og_image, lanes, show=True, out_file=out_path, video=True, fps=fps, infer_time=infer_time, mode=mode, frames=frames)
+        
             frames += 1
 
         print(f"Mean FPS with {mode}: ", 1/(time.time() - init_time + 1e-8) * frames)
@@ -307,10 +314,7 @@ class Runner(object):
             output = self.net(img)
             output = self.net.module.heads.get_lanes(output)
 
-        t1 = time.time()
-        infer_time = t1 - t0
-
-        return output, infer_time
+        return output, time.time() - t0
 
     def infer_onnx_python_cpu(self, img, session, input_name):
 
@@ -321,34 +325,25 @@ class Runner(object):
         output_tensor = torch.from_numpy(output[0]).cuda()
         output = self.net.module.heads.get_lanes(output_tensor)
 
-        t1 = time.time()
-        infer_time = t1 - t0
+        return output, time.time() - t0
 
-        return output, infer_time
-
-    def infer_onnx_python_gpu(self, img, session, input_name):
+    def infer_onnx_python_gpu(self, img, inference_engine):
             
-        t0 = time.time()
-
-        # Run ONNX inference
-        output = session.run(None, {input_name: img})
+        t0 = time.time()    
+        # output = inference_engine.infer(img)  
+        output = inference_engine.infer(img)
         output_tensor = torch.from_numpy(output[0]).cuda()
         output = self.net.module.heads.get_lanes(output_tensor)
 
-        t1 = time.time()
-        infer_time = t1 - t0 
-
-        return output, infer_time
+        return output, time.time() - t0
     
     def infer_tensorrt(self, img, trt_infer):
 
         t0 = time.time()
         output = trt_infer.infer(img)
         output = self.net.module.heads.get_lanes(output)
-        t1 = time.time()
-        infer_time = t1 - t0
 
-        return output, infer_time
+        return output, time.time() - t0
 
     def save_ckpt(self, is_best=False):
         save_model(self.net, self.optimizer, self.scheduler, self.recorder,
