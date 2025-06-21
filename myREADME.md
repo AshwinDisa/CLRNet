@@ -38,7 +38,7 @@ pip install -e .
 
 ## Data and model weights
 
-#### Download test images from [here]() and save as
+#### Download test images from [here](https://drive.google.com/drive/folders/1_OdnHtifhPjnY6PvzzeTB5x74ux0UF2x?usp=sharing) and save as
 ```
 extras/test_images/P3scene7/*.jpg
 ```
@@ -48,7 +48,7 @@ For testing on custom lane dataset create a similar folder in /test_images
 ```
 models/culane_r18.pth
 ```
-#### Download ONNX and TensortRT engine from [here](https://drive.google.com/drive/folders/1NzC4dBfGmrLrnzQavO6uOUHhdecE-g5I?usp=sharing) and save as
+#### Download ONNX and TensortRT engine from [here](https://drive.google.com/drive/folders/1CfV_sYdyDKXdejnTJFveA-S5h0N2z--v?usp=sharing) and save as
 ```
 models/culane_r18_b1.onnx
 models/culane_r18_fp16_b1.trt
