@@ -36,11 +36,9 @@ def read_frames_from_video(video_path, output_dir):
     video.release()
 
 # Path to the video file
-# video_path = "extras/test_images/P3Data/Sequences/scene1/Undist/2023-02-14_11-04-07-front_undistort.mp4"
-# video_path = 'extras/test_images/P3Data/Sequences/scene12/Undist/2023-03-13_06-00-16-front_undistort.mp4'
-video_path = 'extras/test_images/P3Data/Sequences/scene13/Undist/2023-03-03_06-59-50-front_undistort.mp4'
+video_path = "extras/test_images/P3Data/Sequences/scene7/Undist/2023-03-03_11-21-43-front_undistort.mp4"
 
-output_dir = "extras/test_images/P3scene13/"
+output_dir = "extras/test_images/P3scene7/"
 
 # Call the function to read frames from the video
 read_frames_from_video(video_path, output_dir)  
