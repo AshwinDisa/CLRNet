@@ -36,8 +36,9 @@ COLORS = [
 
 MODE = {"tensorrt": "TensorRT",
         "pytorch": "PyTorch",
-        "onnx_python_cpu": "ONNX CPU",
-        "onnx_python_gpu": "ONNX GPU",}
+        "onnx_python_cpu": "i7 CPU",
+        "onnx_python_gpu": "ONNX GPU",
+        }
 
 
 def imshow_lanes(img, lanes, show=False, out_file=None, width=4, video=False, fps=None, infer_time=None, mode=None, frames=None):
