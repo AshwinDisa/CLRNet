@@ -75,13 +75,11 @@ def imshow_lanes(img, lanes, show=False, out_file=None, width=4, video=False, fp
                     1.2, (0, 0, 255), 3, cv2.LINE_AA)
 
 
-        # cv2.imshow('view', img)
-        # cv2.waitKey(1)
+        cv2.imshow('view', img)
+        cv2.waitKey(1)
 
     if out_file:
         save_path = os.path.join(out_file, f'{mode}')
         if not os.path.exists(save_path):
             os.makedirs(save_path)
         cv2.imwrite(save_path + f'/{frames}.jpg', img)
-        # import pdb
-        # pdb.set_trace()
