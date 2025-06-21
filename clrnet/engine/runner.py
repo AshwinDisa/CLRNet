@@ -202,14 +202,8 @@ class Runner(object):
         lanes = []
         for lane in output[0]:
             lane_new = lane.to_array(self.cfg)
-            # coords: Nx2 array, shape [x, y]
-            # coords[:, 1] -= cut_height
             coords_new = lane.scale_lane_points(copy.deepcopy(lane_new), from_size=(1640, 590), to_size=og_image.shape[:2][::-1])
             lanes.append(coords_new)
-
-        print(lanes)
-
-        # pdb.set_trace()
 
         # Optional: resize back image for visualization
         imshow_lanes(og_image, lanes, show=True)
@@ -244,8 +238,8 @@ class Runner(object):
         scale_x = img.shape[1] / 1640
         scale_y = img.shape[0] / 590
 
-        image_folder = image_dir.split('/')[-2]
-        out_path = f'extras/test_images/infer_results/{image_folder}'
+        # image_folder = image_dir.split('/')[-2]
+        # out_path = f'extras/test_images/infer_results/{image_folder}'
 
         for img in img_path:
 
@@ -253,23 +247,16 @@ class Runner(object):
 
             og_image = cv2.imread(img)
 
-            # trained on these params
-            
-            # image = cv2.resize(og_image, (1640, 590))
-            # cut_image = image[cut_height:, :, :]
-            # test_image = cv2.resize(cut_image, (800, 320))
+            # trained on this config
             test_image = cv2.resize(og_image[int(cut_height * og_image.shape[0] / 590):], (800, 320))
             
             # float32 and normalize
             img = test_image.astype(np.float32) / 255.0
-            
-            # img = np.transpose(img, (2, 0, 1))
-            # img = np.expand_dims(img, axis=0).astype(np.float32)
             img = np.transpose(img, (2, 0, 1))[np.newaxis, ...]
 
             if mode == 'pytorch':
                 output, infer_time = self.infer_pytorch(img)
-                
+
             elif mode == 'onnx_python_cpu':
                 output, infer_time = self.infer_onnx_python_cpu(img, session, input_name)
                 
@@ -285,8 +272,6 @@ class Runner(object):
             lanes = []
             for lane in output[0]:
                 lane_new = lane.to_array(self.cfg)
-                # scale for custom images
-                # coords_new = lane.scale_lane_points(copy.deepcopy(lane_new), from_size=(1640, 590), to_size=og_image.shape[:2][::-1])
                 coords_new = self.scale_lane_points(lane_new, scale_x, scale_y)
                 lanes.append(coords_new)    
 
@@ -300,6 +285,9 @@ class Runner(object):
             # imshow_lanes(og_image, lanes, show=True, out_file=out_path, video=True, fps=fps, infer_time=infer_time, mode=mode, frames=frames)
         
             frames += 1
+            if time.time() - init_time > 20:
+                print(f"Stopping after 20 seconds of inference for {mode}.")
+                break
 
         print(f"Mean FPS with {mode}: ", 1/(time.time() - init_time + 1e-8) * frames)
 
@@ -309,7 +297,6 @@ class Runner(object):
 
         t0 = time.time()
 
-        # Run PyTorch inference
         with torch.no_grad():
             output = self.net(img)
             output = self.net.module.heads.get_lanes(output)
@@ -320,7 +307,6 @@ class Runner(object):
 
         t0 = time.time()
 
-        # Run ONNX inference
         output = session.run(None, {input_name: img})
         output_tensor = torch.from_numpy(output[0]).cuda()
         output = self.net.module.heads.get_lanes(output_tensor)
@@ -329,8 +315,7 @@ class Runner(object):
 
     def infer_onnx_python_gpu(self, img, inference_engine):
             
-        t0 = time.time()    
-        # output = inference_engine.infer(img)  
+        t0 = time.time()     
         output = inference_engine.infer(img)
         output_tensor = torch.from_numpy(output[0]).cuda()
         output = self.net.module.heads.get_lanes(output_tensor)
